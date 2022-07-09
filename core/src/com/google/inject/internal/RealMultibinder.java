@@ -21,17 +21,16 @@ import com.google.inject.binder.LinkedBindingBuilder;
 import com.google.inject.internal.InternalProviderInstanceBindingImpl.InitializationTiming;
 import com.google.inject.multibindings.MultibinderBinding;
 import com.google.inject.multibindings.MultibindingsTargetVisitor;
-import com.google.inject.spi.BindingTargetVisitor;
-import com.google.inject.spi.Dependency;
-import com.google.inject.spi.Message;
-import com.google.inject.spi.ProviderInstanceBinding;
-import com.google.inject.spi.ProviderWithExtensionVisitor;
+import com.google.inject.multibindings.Ordered;
+import com.google.inject.spi.*;
 import com.google.inject.util.Types;
 import java.lang.reflect.Type;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * The actual multibinder plays several roles:
@@ -49,7 +48,7 @@ import java.util.function.Function;
  *
  * <p>We use a subclass to hide 'implements Module, Provider' from the public API.
  */
-public final class RealMultibinder<T> implements Module {
+public class RealMultibinder<T> implements Module {
 
   /** Implementation of newSetBinder. */
   public static <T> RealMultibinder<T> newRealSetBinder(Binder binder, Key<T> key) {
@@ -58,6 +57,15 @@ public final class RealMultibinder<T> implements Module {
     binder.install(result);
     return result;
   }
+
+  /** Implementation of newSetBinder. */
+  public static <T> RealMultibinder<T> newRealListBinder(Binder binder, Key<T> key) {
+    binder = binder.skipSources(RealMultibinder.class);
+    RealOrderedMultibinder<T> result = new RealOrderedMultibinder<>(binder, key);
+    binder.install(result);
+    return result;
+  }
+
 
   @SuppressWarnings("unchecked") // wrapping a T in a Set safely returns a Set<T>
   static <T> TypeLiteral<Set<T>> setOf(TypeLiteral<T> elementType) {
@@ -89,8 +97,25 @@ public final class RealMultibinder<T> implements Module {
     return (TypeLiteral<Set<? extends T>>) TypeLiteral.get(setOfExtendsType);
   }
 
-  private final BindingSelection<T> bindingSelection;
-  private final Binder binder;
+
+  @SuppressWarnings("unchecked") // wrapping a T in a List safely returns a List<T>
+  static <T> TypeLiteral<List<T>> listOf(TypeLiteral<T> elementType) {
+    Type type = Types.listOf(elementType.getType());
+    return (TypeLiteral<List<T>>) TypeLiteral.get(type);
+  }
+
+
+  @SuppressWarnings("unchecked") // wrapping a T in a List safely returns a List<? extends T>
+  static <T> TypeLiteral<List< ? extends T>> listOfExtendsOf(TypeLiteral<T> elementType) {
+    // ? extends T
+    Type extendBaseType = Types.subtypeOf(elementType.getType());
+    // List<? extends T>
+    Type type = Types.listOf(extendBaseType);
+    return (TypeLiteral<List< ? extends T>>) TypeLiteral.get(type);
+  }
+
+  protected final BindingSelection<T> bindingSelection;
+  protected final Binder binder;
 
   RealMultibinder(Binder binder, Key<T> key) {
     this.binder = checkNotNull(binder, "binder");
@@ -169,7 +194,7 @@ public final class RealMultibinder<T> implements Module {
    * {@link BindingSelection}, allowing provider instances for various bindings to be implemented
    * with less duplication.
    */
-  private abstract static class BaseFactory<ValueT, ProvidedT>
+  abstract static class BaseFactory<ValueT, ProvidedT>
       extends InternalProviderInstanceBindingImpl.Factory<ProvidedT> {
     final Function<BindingSelection<ValueT>, ImmutableSet<Dependency<?>>> dependenciesFn;
     final BindingSelection<ValueT> bindingSelection;
@@ -380,12 +405,15 @@ public final class RealMultibinder<T> implements Module {
     }
   }
 
-  private static final class BindingSelection<T> {
+  protected static final class BindingSelection<T> {
     // prior to initialization we declare just a dependency on the injector, but as soon as we are
     // initialized we swap to dependencies on the elements.
     private static final ImmutableSet<Dependency<?>> MODULE_DEPENDENCIES =
         ImmutableSet.<Dependency<?>>of(Dependency.get(Key.get(Injector.class)));
     private final TypeLiteral<T> elementType;
+
+    private final Key<List<T>> listKey;
+
     private final Key<Set<T>> setKey;
 
     // these are all lazily allocated
@@ -393,6 +421,8 @@ public final class RealMultibinder<T> implements Module {
     private Key<Collection<Provider<T>>> collectionOfProvidersKey;
     private Key<Collection<javax.inject.Provider<T>>> collectionOfJavaxProvidersKey;
     private Key<Set<? extends T>> setOfExtendsKey;
+
+    private Key<List<? extends T>> listOfExtendsKey;
     private Key<Boolean> permitDuplicatesKey;
 
     private boolean isInitialized;
@@ -410,6 +440,7 @@ public final class RealMultibinder<T> implements Module {
 
     BindingSelection(Key<T> key) {
       this.setKey = key.ofType(setOf(key.getTypeLiteral()));
+      this.listKey = key.ofType(listOf(key.getTypeLiteral()));
       this.elementType = key.getTypeLiteral();
     }
 
@@ -423,12 +454,12 @@ public final class RealMultibinder<T> implements Module {
       List<Binding<T>> bindings = Lists.newArrayList();
       Set<Indexer.IndexedBinding> index = Sets.newHashSet();
       Indexer indexer = new Indexer(injector);
-      List<Dependency<?>> dependencies = Lists.newArrayList();
-      List<Dependency<?>> providerDependencies = Lists.newArrayList();
-      for (Binding<?> entry : injector.findBindingsByType(elementType)) {
+      List<Pair<Integer,Dependency<?>>> orderAndDependency = Lists.newArrayList();
+      List<Pair<Integer, Dependency<?>>> orderAndProviderDependencies = Lists.newArrayList();
+      for (Binding<T> entry : injector.findBindingsByType(elementType)) {
         if (keyMatches(entry.getKey())) {
-          @SuppressWarnings("unchecked") // protected by findBindingsByType()
-          Binding<T> binding = (Binding<T>) entry;
+          // protected by keyMatches, no need to do a cast.
+          Binding<T> binding = entry;
           if (index.add(binding.acceptTargetVisitor(indexer))) {
             // TODO(lukes): most of these are linked bindings since user bindings are linked to
             // a user binding through the @Element annotation.  Since this is an implementation
@@ -440,17 +471,29 @@ public final class RealMultibinder<T> implements Module {
             // TODO(lukes): we should mark this as a non-nullable dependency since we don't accept
             // null.
             // Add a dependency on Key<T>
-            dependencies.add(Dependency.get(key));
+            int order = deduceOrder(binding);
+            orderAndDependency.add(Pair.of(order, Dependency.get(key)));
             // and add a dependency on Key<Provider<T>>
-            providerDependencies.add(
-                Dependency.get(key.ofType(Types.providerOf(key.getTypeLiteral().getType()))));
+            orderAndProviderDependencies.add(Pair.of(order, Dependency.get(key.ofType(Types.providerOf(key.getTypeLiteral().getType())))));
           }
         }
       }
 
       this.bindings = ImmutableList.copyOf(bindings);
+
+      // now the order of instance of Dependency stored in list below is following definitions from @Ordered annotation.
+      List<Dependency<?>> dependencies = orderAndDependency.stream()
+                                                           .sorted(Comparator.comparingInt(p -> p.key))
+                                                           .map(p -> p.value)
+                                                           .distinct()
+                                                           .collect(Collectors.toList());
+
       this.dependencies = ImmutableSet.copyOf(dependencies);
-      this.providerDependencies = ImmutableSet.copyOf(providerDependencies);
+      this.providerDependencies = ImmutableSet.copyOf(orderAndProviderDependencies.stream()
+                                                                                  .sorted(Comparator.comparingInt(p -> p.key))
+                                                                                  .map(p -> p.value)
+                                                                                  .collect(
+                                                                                          Collectors.toList()));
       this.permitDuplicates = permitsDuplicates(injector);
       // This is safe because all our dependencies are assignable to T and we never assign to
       // elements of this array.
@@ -459,6 +502,44 @@ public final class RealMultibinder<T> implements Module {
           (SingleParameterInjector<T>[]) injector.getParametersInjectors(dependencies, errors);
       this.parameterinjectors = typed;
       isInitialized = true;
+    }
+
+    /**
+     * Find order for instances in List<T> provided by {@link Ordered} annotation specified.
+     * @param binding incoming interface -> implementation bindings.
+     * @return order provided by {@link Ordered#value()} or {@link Integer#MAX_VALUE} (the lowest priority) if annotation is not present.
+     */
+    int deduceOrder(Binding<T> binding) {
+      if (binding instanceof LinkedKeyBinding) {
+        LinkedKeyBinding<T> linkedKeyBinding = (LinkedKeyBinding<T>) binding;
+        Ordered orderedAnnotation = deduceOrderedAnnotationFromKey(linkedKeyBinding.getLinkedKey());
+        if (orderedAnnotation != null) {
+          return orderedAnnotation.value();
+        }
+      }
+      if (binding instanceof ProviderInstanceBinding) {
+        ProviderInstanceBinding<T> providerBinding = (ProviderInstanceBinding<T>) binding;
+        // no need to know actual parameterized type.
+        @SuppressWarnings("rawtypes")
+        Class<? extends javax.inject.Provider> providerType = providerBinding.getUserSuppliedProvider().getClass();
+        Ordered orderedAnnotation = Annotations.getOrderedAnnotation(providerType);
+        if (orderedAnnotation != null) {
+          return orderedAnnotation.value();
+        }
+      }
+      if (binding instanceof ProviderKeyBinding) {
+        ProviderKeyBinding<T> providerKey = (ProviderKeyBinding<T>) binding;
+        Ordered orderedAnnotation = deduceOrderedAnnotationFromKey(providerKey.getProviderKey());
+        if (orderedAnnotation != null) {
+          return orderedAnnotation.value();
+        }
+      }
+      // no @Ordered annotation. make default (the lowest priority).
+      return Integer.MAX_VALUE;
+    }
+
+    Ordered deduceOrderedAnnotationFromKey(Key<?> key) {
+      return Annotations.getOrderedAnnotation(key.getTypeLiteral().getRawType());
     }
 
     boolean permitsDuplicates(Injector injector) {
@@ -526,6 +607,14 @@ public final class RealMultibinder<T> implements Module {
       return local;
     }
 
+    Key<List<? extends T>> getListOfExtendsKey() {
+      Key<List<? extends T>> local = listOfExtendsKey;
+      if (local == null) {
+        local = listOfExtendsKey = listKey.ofType(listOfExtendsOf(elementType));
+      }
+      return local;
+    }
+
     boolean isInitialized() {
       return isInitialized;
     }
@@ -538,6 +627,10 @@ public final class RealMultibinder<T> implements Module {
 
     Key<Set<T>> getSetKey() {
       return setKey;
+    }
+
+    Key<List<T>> getListKey() {
+      return listKey;
     }
 
     @SuppressWarnings("unchecked")
@@ -640,6 +733,44 @@ public final class RealMultibinder<T> implements Module {
     @Override
     public int hashCode() {
       return getClass().hashCode() ^ key.hashCode();
+    }
+  }
+
+  /**
+   * A simple pair packs key and value together.
+   * @param <K>
+   * @param <V>
+   */
+  private static class Pair<K, V> {
+    K key;
+    V value;
+
+    public static <K, V> Pair<K, V> of(K key, V value) {
+      return new Pair<>(key, value);
+    }
+
+    public Pair() {
+    }
+
+    public Pair(K key, V value) {
+      this.key = key;
+      this.value = value;
+    }
+
+    public K getKey() {
+      return key;
+    }
+
+    public void setKey(K key) {
+      this.key = key;
+    }
+
+    public V getValue() {
+      return value;
+    }
+
+    public void setValue(V value) {
+      this.value = value;
     }
   }
 }

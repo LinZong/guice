@@ -16,6 +16,7 @@
 
 package com.google.inject.multibindings;
 
+import static com.google.inject.internal.RealMultibinder.newRealListBinder;
 import static com.google.inject.internal.RealMultibinder.newRealSetBinder;
 
 import com.google.inject.Binder;
@@ -100,6 +101,14 @@ public class Multibinder<T> {
   }
 
   /**
+   * Returns a new multibinder that collects instances of {@code type} in an ordered {@link java.util.List} that is
+   * itself bound with no binding annotation.
+   */
+  public static <T> Multibinder<T> newListBinder(Binder binder, Class<T> type) {
+    return newListBinder(binder, Key.get(type));
+  }
+
+  /**
    * Returns a new multibinder that collects instances of {@code type} in a {@link Set} that is
    * itself bound with {@code annotation}.
    */
@@ -135,6 +144,18 @@ public class Multibinder<T> {
   public static <T> Multibinder<T> newSetBinder(Binder binder, Key<T> key) {
     return new Multibinder<T>(newRealSetBinder(binder.skipSources(Multibinder.class), key));
   }
+
+
+  /**
+   * Returns a new multibinder that collects instances of the key's type in an ordered list {@link java.util.List} that is
+   * itself bound with the annotation (if any) of the key.
+   *
+   * @since 4.0
+   */
+  public static <T> Multibinder<T> newListBinder(Binder binder, Key<T> key) {
+    return new Multibinder<T>(newRealListBinder(binder.skipSources(Multibinder.class), key));
+  }
+
 
   /**
    * Returns a new multibinder that collects instances of {@code type} in a {@link Set} that is

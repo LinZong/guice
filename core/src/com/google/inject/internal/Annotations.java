@@ -31,6 +31,7 @@ import com.google.inject.Key;
 import com.google.inject.ScopeAnnotation;
 import com.google.inject.TypeLiteral;
 import com.google.inject.internal.util.Classes;
+import com.google.inject.multibindings.Ordered;
 import com.google.inject.name.Named;
 import com.google.inject.name.Names;
 import java.lang.annotation.Annotation;
@@ -42,6 +43,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import javax.inject.Qualifier;
 
@@ -374,6 +376,24 @@ public class Annotations {
   /** Returns true if annotations of the specified type are binding annotations. */
   public static boolean isBindingAnnotation(Class<? extends Annotation> annotationType) {
     return bindingAnnotationChecker.hasAnnotations(annotationType);
+  }
+
+  private static final AnnotationChecker orderAnnotationChecker = new AnnotationChecker(Collections.singletonList(Ordered.class));
+
+  /**
+   * Get {@link Ordered} annotation annotated on implementation class.
+   * @param type implementation type to find out @Ordered annotation.
+   * @return instance of @Ordered annotation, or null if not exists in the whole inheritance hierarchy.
+   */
+  public static Ordered getOrderedAnnotation(Class<?> type) {
+    while (type != Object.class) {
+      Ordered ordered = type.getAnnotation(Ordered.class);
+      if (ordered != null) {
+        return ordered;
+      }
+      type = type.getSuperclass();
+    }
+    return null;
   }
 
   /**
