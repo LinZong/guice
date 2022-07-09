@@ -96,6 +96,7 @@ public class MultiListBindingTest extends TestCase {
             assertEquals(5, shapes.size());
             assertEquals(String.format("rectangle[width=%d, height=%d]", 114, 514), shapes.get(0).getName());
             assertEquals("circle", shapes.get(1).getName());
+            // different type of bindings (LinkedKeyBinding and ProviderInstanceBinding) will serve different instances into List.
             assertEquals("square", shapes.get(2).getName());
             assertEquals("square", shapes.get(3).getName());
             assertEquals("triangle", shapes.get(4).getName());
