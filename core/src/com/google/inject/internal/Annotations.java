@@ -381,8 +381,17 @@ public class Annotations {
   private static final AnnotationChecker orderAnnotationChecker = new AnnotationChecker(Collections.singletonList(Ordered.class));
 
   /**
+   * Get {@link Ordered} annotation annotated on implementation class wrapped {@link Key}.
+   * @param key {@link Key} to implementation class.
+   * @return instance of @Ordered annotation, or null if not exists in the whole inheritance hierarchy.
+   */
+  public static Ordered getOrderedAnnotation(Key<?> key) {
+    return getOrderedAnnotation(key.getTypeLiteral().getRawType());
+  }
+
+  /**
    * Get {@link Ordered} annotation annotated on implementation class.
-   * @param type implementation type to find out @Ordered annotation.
+   * @param type implementation class to find out @Ordered annotation.
    * @return instance of @Ordered annotation, or null if not exists in the whole inheritance hierarchy.
    */
   public static Ordered getOrderedAnnotation(Class<?> type) {

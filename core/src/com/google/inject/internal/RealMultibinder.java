@@ -510,13 +510,15 @@ public class RealMultibinder<T> implements Module {
      * @return order provided by {@link Ordered#value()} or {@link Integer#MAX_VALUE} (the lowest priority) if annotation is not present.
      */
     int deduceOrder(Binding<T> binding) {
+      // multibinder.addBinding().to(FooImpl.class);
       if (binding instanceof LinkedKeyBinding) {
         LinkedKeyBinding<T> linkedKeyBinding = (LinkedKeyBinding<T>) binding;
-        Ordered orderedAnnotation = deduceOrderedAnnotationFromKey(linkedKeyBinding.getLinkedKey());
+        Ordered orderedAnnotation = Annotations.getOrderedAnnotation(linkedKeyBinding.getLinkedKey());
         if (orderedAnnotation != null) {
           return orderedAnnotation.value();
         }
       }
+      // multibinder.addBinding().toProvider(fooImplInstance);
       if (binding instanceof ProviderInstanceBinding) {
         ProviderInstanceBinding<T> providerBinding = (ProviderInstanceBinding<T>) binding;
         // no need to know actual parameterized type.
@@ -527,19 +529,16 @@ public class RealMultibinder<T> implements Module {
           return orderedAnnotation.value();
         }
       }
+      // multibinder.addBinding().toProvider(FooImplProvider.class);
       if (binding instanceof ProviderKeyBinding) {
         ProviderKeyBinding<T> providerKey = (ProviderKeyBinding<T>) binding;
-        Ordered orderedAnnotation = deduceOrderedAnnotationFromKey(providerKey.getProviderKey());
+        Ordered orderedAnnotation = Annotations.getOrderedAnnotation(providerKey.getProviderKey());
         if (orderedAnnotation != null) {
           return orderedAnnotation.value();
         }
       }
       // no @Ordered annotation. make default (the lowest priority).
       return Integer.MAX_VALUE;
-    }
-
-    Ordered deduceOrderedAnnotationFromKey(Key<?> key) {
-      return Annotations.getOrderedAnnotation(key.getTypeLiteral().getRawType());
     }
 
     boolean permitsDuplicates(Injector injector) {
