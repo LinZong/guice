@@ -150,7 +150,7 @@ public class Multibinder<T> {
    * Returns a new multibinder that collects instances of the key's type in an ordered list {@link java.util.List} that is
    * itself bound with the annotation (if any) of the key.
    *
-   * @since 4.0
+   * @since 5.1.0-ordered-list
    */
   public static <T> Multibinder<T> newListBinder(Binder binder, Key<T> key) {
     return new Multibinder<T>(newRealListBinder(binder.skipSources(Multibinder.class), key));

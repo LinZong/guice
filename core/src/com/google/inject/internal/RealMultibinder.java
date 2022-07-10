@@ -58,10 +58,10 @@ public class RealMultibinder<T> implements Module {
     return result;
   }
 
-  /** Implementation of newSetBinder. */
+  /** Implementation of newListBinder. */
   public static <T> RealMultibinder<T> newRealListBinder(Binder binder, Key<T> key) {
     binder = binder.skipSources(RealMultibinder.class);
-    RealOrderedMultibinder<T> result = new RealOrderedMultibinder<>(binder, key);
+    RealOrderedListMultibinder<T> result = new RealOrderedListMultibinder<>(binder, key);
     binder.install(result);
     return result;
   }

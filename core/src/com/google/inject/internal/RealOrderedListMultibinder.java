@@ -8,8 +8,12 @@ import com.google.inject.spi.Dependency;
 
 import java.util.List;
 
-public class RealOrderedMultibinder<T> extends RealMultibinder<T> {
-    RealOrderedMultibinder(Binder binder, Key<T> key) {
+/**
+ * This binder performs just like its super class but only providing dependencies in {@literal List<T>} with order preserves (if exists).
+ * @param <T>
+ */
+public class RealOrderedListMultibinder<T> extends RealMultibinder<T> {
+    RealOrderedListMultibinder(Binder binder, Key<T> key) {
         super(binder, key);
     }
 
