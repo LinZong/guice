@@ -27,18 +27,35 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * Allows users define customized order of elements in list provided by list bindings
  * The custom key annotation can ONLY be applied to implementation class.
  *
+ * <br />
+ *
+ * Example:
+ *
  * <pre>
- * <code>
- *     public interface A {
- *         String getName();
- *     }
+ * public interface Shape {
+ *     String getName();
+ * }
  *
- *     public class AImpl implements A {
- *         {@literal @}Overrides
- *         public String getName() { return "AImpl"; }
+ *{@literal @Ordered(100)}
+ * public class Circle implements Shape {
+ *     public String getName() { return "circle"; }
+ * }
  *
- *     }
- * </code>
+ *{@literal @Ordered(200)}
+ * public class Rectangle implements Shape {
+ *     public String getName() { return "rectangle"; }
+ * }
+ *
+ * public class ShapeFactory {
+ *    {@literal @}{@link com.google.inject.Inject}
+ *    {@literal List<Shape> shapes;}
+ *
+ *    public void verify() {
+ *        assertEquals(2, shapes.size());
+ *        assertEquals("circle", shapes.get(0).getName());
+ *        assertEquals("rectangle", shapes.get(0).getName());
+ *    }
+ * }
  * </pre>
  *
  * @since 4.0
