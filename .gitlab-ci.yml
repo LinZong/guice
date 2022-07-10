@@ -25,7 +25,3 @@ build:
     policy: pull-push
     paths:
       - .m2/repository
-  artifacts:
-    paths:
-      - build
-    expire_in: 9999 mins
