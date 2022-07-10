@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - master
+      - 'v5.1.0-**' # forked dev branch
   pull_request:
     branches:
       - master
